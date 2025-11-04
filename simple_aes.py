@@ -10,6 +10,21 @@ from Crypto.Cipher import AES
 from Crypto.Random import get_random_bytes
 
 
+__all__ = [
+    "AESCipherError",
+    "EncryptedMessage",
+    "generate_key",
+    "encrypt",
+    "decrypt",
+    "caesar_cipher",
+    "caesar_encrypt",
+    "caesar_decrypt",
+    "encrypt_caesar_aes",
+    "decrypt_caesar_aes",
+    "main",
+]
+
+
 NONCE_SIZE = 12
 TAG_SIZE = 16
 KEY_SIZE = 32
@@ -53,7 +68,11 @@ def generate_key() -> bytes:
     return get_random_bytes(KEY_SIZE)
 
 
-def encrypt(plaintext: bytes, key: bytes, associated_data: Optional[bytes] = None) -> EncryptedMessage:
+def encrypt(
+    plaintext: bytes,
+    key: bytes,
+    associated_data: Optional[bytes] = None,
+) -> EncryptedMessage:
     if len(key) != KEY_SIZE:
         raise ValueError("A chave precisa ter 32 bytes (256 bits)")
 
@@ -65,7 +84,11 @@ def encrypt(plaintext: bytes, key: bytes, associated_data: Optional[bytes] = Non
     return EncryptedMessage(nonce=nonce, tag=tag, ciphertext=ciphertext)
 
 
-def decrypt(message: EncryptedMessage | bytes | str, key: bytes, associated_data: Optional[bytes] = None) -> bytes:
+def decrypt(
+    message: EncryptedMessage | bytes | str,
+    key: bytes,
+    associated_data: Optional[bytes] = None,
+) -> bytes:
     if len(key) != KEY_SIZE:
         raise ValueError("A chave precisa ter 32 bytes (256 bits)")
 
@@ -87,8 +110,69 @@ def decrypt(message: EncryptedMessage | bytes | str, key: bytes, associated_data
 
 
 def _save_key(path: str, key: bytes) -> None:
-    with open(path, "wb") as key_file:
-        key_file.write(key)
+    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+    if hasattr(os, "O_BINARY"):
+        flags |= os.O_BINARY  # type: ignore[attr-defined]
+    fd = os.open(path, flags, 0o600)
+    try:
+        with os.fdopen(fd, "wb") as key_file:
+            key_file.write(key)
+        os.chmod(path, 0o600)
+        fd = -1
+    finally:
+        if fd >= 0:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+
+
+def caesar_cipher(text: str, shift: int) -> str:
+    shift = shift % 26
+    result: list[str] = []
+    for char in text:
+        if "a" <= char <= "z":
+            base = ord("a")
+            result.append(chr(base + ((ord(char) - base + shift) % 26)))
+        elif "A" <= char <= "Z":
+            base = ord("A")
+            result.append(chr(base + ((ord(char) - base + shift) % 26)))
+        else:
+            result.append(char)
+    return "".join(result)
+
+
+def caesar_encrypt(message: str, shift: int) -> str:
+    return caesar_cipher(message, shift)
+
+
+def caesar_decrypt(message: str, shift: int) -> str:
+    return caesar_cipher(message, -shift)
+
+
+def encrypt_caesar_aes(
+    message: str,
+    key: bytes,
+    shift: int = 3,
+    associated_data: Optional[bytes] = None,
+) -> EncryptedMessage:
+    """Aplica cifra de César e depois criptografa com AES-GCM."""
+
+    caesar_text = caesar_encrypt(message, shift)
+    return encrypt(caesar_text.encode("utf-8"), key, associated_data)
+
+
+def decrypt_caesar_aes(
+    message: EncryptedMessage | bytes | str,
+    key: bytes,
+    shift: int = 3,
+    associated_data: Optional[bytes] = None,
+) -> str:
+    """Descriptografa com AES-GCM e reverte a cifra de César."""
+
+    decrypted = decrypt(message, key, associated_data)
+    caesar_plain = caesar_decrypt(decrypted.decode("utf-8"), shift)
+    return caesar_plain
 
 
 def _load_key(path: str) -> bytes:
@@ -120,6 +204,30 @@ def _cmd_decrypt(args: argparse.Namespace) -> None:
     print(plaintext.decode("utf-8"))
 
 
+def _cmd_caesar_encrypt(args: argparse.Namespace) -> None:
+    result = caesar_encrypt(args.message, args.shift)
+    print(result)
+
+
+def _cmd_caesar_decrypt(args: argparse.Namespace) -> None:
+    result = caesar_decrypt(args.message, args.shift)
+    print(result)
+
+
+def _cmd_mix_encrypt(args: argparse.Namespace) -> None:
+    key = _load_key(args.key)
+    associated_data = args.associated_data.encode("utf-8") if args.associated_data else None
+    message = encrypt_caesar_aes(args.message, key, args.shift, associated_data)
+    print(message.to_base64())
+
+
+def _cmd_mix_decrypt(args: argparse.Namespace) -> None:
+    key = _load_key(args.key)
+    associated_data = args.associated_data.encode("utf-8") if args.associated_data else None
+    plaintext = decrypt_caesar_aes(args.message, key, args.shift, associated_data)
+    print(plaintext)
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="AES-256 simples em modo GCM")
     subparsers = parser.add_subparsers(required=True)
@@ -139,6 +247,68 @@ def _build_parser() -> argparse.ArgumentParser:
     dec_parser.add_argument("message", help="Mensagem codificada em Base64")
     dec_parser.add_argument("--associated-data", help="Dados associados usados na criptografia")
     dec_parser.set_defaults(func=_cmd_decrypt)
+
+    caesar_enc_parser = subparsers.add_parser(
+        "caesar-encrypt",
+        help="Criptografar mensagem usando cifra de César",
+    )
+    caesar_enc_parser.add_argument("message", help="Mensagem em texto puro")
+    caesar_enc_parser.add_argument(
+        "--shift",
+        type=int,
+        default=3,
+        help="Deslocamento da cifra (padrão: 3)",
+    )
+    caesar_enc_parser.set_defaults(func=_cmd_caesar_encrypt)
+
+    caesar_dec_parser = subparsers.add_parser(
+        "caesar-decrypt",
+        help="Descriptografar mensagem usando cifra de César",
+    )
+    caesar_dec_parser.add_argument("message", help="Mensagem criptografada")
+    caesar_dec_parser.add_argument(
+        "--shift",
+        type=int,
+        default=3,
+        help="Deslocamento usado na cifragem (padrão: 3)",
+    )
+    caesar_dec_parser.set_defaults(func=_cmd_caesar_decrypt)
+
+    mix_enc_parser = subparsers.add_parser(
+        "mix-encrypt",
+        help="Aplicar cifra de César e criptografar com AES",
+    )
+    mix_enc_parser.add_argument("key", help="Arquivo contendo a chave de 32 bytes")
+    mix_enc_parser.add_argument("message", help="Mensagem em texto puro")
+    mix_enc_parser.add_argument(
+        "--shift",
+        type=int,
+        default=3,
+        help="Deslocamento da cifra de César (padrão: 3)",
+    )
+    mix_enc_parser.add_argument(
+        "--associated-data",
+        help="Dados associados opcionais para autenticação",
+    )
+    mix_enc_parser.set_defaults(func=_cmd_mix_encrypt)
+
+    mix_dec_parser = subparsers.add_parser(
+        "mix-decrypt",
+        help="Descriptografar AES e reverter cifra de César",
+    )
+    mix_dec_parser.add_argument("key", help="Arquivo contendo a chave de 32 bytes")
+    mix_dec_parser.add_argument("message", help="Mensagem codificada em Base64")
+    mix_dec_parser.add_argument(
+        "--shift",
+        type=int,
+        default=3,
+        help="Deslocamento usado na cifra de César (padrão: 3)",
+    )
+    mix_dec_parser.add_argument(
+        "--associated-data",
+        help="Dados associados utilizados na criptografia",
+    )
+    mix_dec_parser.set_defaults(func=_cmd_mix_decrypt)
 
     return parser
 
