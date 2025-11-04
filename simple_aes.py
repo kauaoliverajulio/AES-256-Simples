@@ -68,7 +68,6 @@ def generate_key() -> bytes:
     return get_random_bytes(KEY_SIZE)
 
 
-def encrypt(plaintext: bytes, key: bytes, associated_data: Optional[bytes] = None) -> EncryptedMessage:
 def encrypt(
     plaintext: bytes,
     key: bytes,
@@ -85,7 +84,6 @@ def encrypt(
     return EncryptedMessage(nonce=nonce, tag=tag, ciphertext=ciphertext)
 
 
-def decrypt(message: EncryptedMessage | bytes | str, key: bytes, associated_data: Optional[bytes] = None) -> bytes:
 def decrypt(
     message: EncryptedMessage | bytes | str,
     key: bytes,
@@ -112,8 +110,9 @@ def decrypt(
 
 
 def _save_key(path: str, key: bytes) -> None:
-    with open(path, "wb") as key_file:
-        key_file.write(key)
+    """
+    Grava a chave com permissão 600, evitando escrita dupla.
+    """
     flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
     if hasattr(os, "O_BINARY"):
         flags |= os.O_BINARY  # type: ignore[attr-defined]
@@ -121,8 +120,8 @@ def _save_key(path: str, key: bytes) -> None:
     try:
         with os.fdopen(fd, "wb") as key_file:
             key_file.write(key)
-        os.chmod(path, 0o600)
         fd = -1
+        os.chmod(path, 0o600)
     finally:
         if fd >= 0:
             try:
@@ -161,7 +160,6 @@ def encrypt_caesar_aes(
     associated_data: Optional[bytes] = None,
 ) -> EncryptedMessage:
     """Aplica cifra de César e depois criptografa com AES-GCM."""
-
     caesar_text = caesar_encrypt(message, shift)
     return encrypt(caesar_text.encode("utf-8"), key, associated_data)
 
@@ -173,7 +171,6 @@ def decrypt_caesar_aes(
     associated_data: Optional[bytes] = None,
 ) -> str:
     """Descriptografa com AES-GCM e reverte a cifra de César."""
-
     decrypted = decrypt(message, key, associated_data)
     caesar_plain = caesar_decrypt(decrypted.decode("utf-8"), shift)
     return caesar_plain
@@ -191,6 +188,7 @@ def _cmd_generate_key(args: argparse.Namespace) -> None:
     if args.output:
         _save_key(args.output, key)
     else:
+        # stdout binário
         os.write(1, key)
 
 
