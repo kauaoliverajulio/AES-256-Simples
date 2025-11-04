@@ -53,7 +53,11 @@ def generate_key() -> bytes:
     return get_random_bytes(KEY_SIZE)
 
 
-def encrypt(plaintext: bytes, key: bytes, associated_data: Optional[bytes] = None) -> EncryptedMessage:
+def encrypt(
+    plaintext: bytes,
+    key: bytes,
+    associated_data: Optional[bytes] = None,
+) -> EncryptedMessage:
     if len(key) != KEY_SIZE:
         raise ValueError("A chave precisa ter 32 bytes (256 bits)")
 
@@ -65,7 +69,11 @@ def encrypt(plaintext: bytes, key: bytes, associated_data: Optional[bytes] = Non
     return EncryptedMessage(nonce=nonce, tag=tag, ciphertext=ciphertext)
 
 
-def decrypt(message: EncryptedMessage | bytes | str, key: bytes, associated_data: Optional[bytes] = None) -> bytes:
+def decrypt(
+    message: EncryptedMessage | bytes | str,
+    key: bytes,
+    associated_data: Optional[bytes] = None,
+) -> bytes:
     if len(key) != KEY_SIZE:
         raise ValueError("A chave precisa ter 32 bytes (256 bits)")
 
@@ -253,7 +261,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     mix_enc_parser = subparsers.add_parser(
         "mix-encrypt",
-        help="Aplicar cifra de César e criptografar com AES", 
+        help="Aplicar cifra de César e criptografar com AES",
     )
     mix_enc_parser.add_argument("key", help="Arquivo contendo a chave de 32 bytes")
     mix_enc_parser.add_argument("message", help="Mensagem em texto puro")
@@ -271,7 +279,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     mix_dec_parser = subparsers.add_parser(
         "mix-decrypt",
-        help="Descriptografar AES e reverter cifra de César", 
+        help="Descriptografar AES e reverter cifra de César",
     )
     mix_dec_parser.add_argument("key", help="Arquivo contendo a chave de 32 bytes")
     mix_dec_parser.add_argument("message", help="Mensagem codificada em Base64")
