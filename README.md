@@ -61,3 +61,13 @@ mix_message = encrypt_caesar_aes("ola mundo", key, shift=4)
 print(mix_message.to_base64())
 print(decrypt_caesar_aes(mix_message, key, shift=4))
 ```
+
+
+# gerar chave AES-256
+python aes_misto.py generate-key key.bin
+
+# cifrar (César + AES)
+python aes_misto.py mix-encrypt key.bin "Capivara suprema" --shift 5 --associated-data "demo"
+
+# decifrar
+python aes_misto.py mix-decrypt key.bin "COLE_O_BASE64_AQUI" --shift 5 --associated-data "demo"
